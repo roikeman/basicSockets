@@ -6,12 +6,13 @@
  */
 #include <iostream>
 #include <stdlib.h>
+#include <stdio.h>
 #include <sys/timeb.h>
 
 #include "basicSockets.h"
 using namespace std;
 
-const int rounds = 10000;
+const int rounds = 5;
 
 void* doNoting(void* data, int size){
  return data;
@@ -21,20 +22,27 @@ void* doNoting(void* data, int size){
 int main(const int argc, char * argv[]){
 	char str[] = "test";
 	char * buffer;
+	
+	timeb startt, endt;
+	startt.time = 0;
+	startt.millitm = 0;
+	startt.dstflag = 0;
+	startt.timezone = 0;
 	cout<<argc<<endl;
-	timeb start, end;
-
-
+	printf("arg:%s %s %s\n", argv[0] , argv[1], argv[2]);
+	
 	if (argc == 3){
 		BmrNet bn = BmrNet(argv[1], atoi(argv[2]));
 		bn.connectNow();
-		ftime(&start);
+		ftime(&startt);
 
 		for (int i = 0; i < rounds; ++i) {
 			cout<<"first"<<endl;
-			buffer = (char*)bn.sendAndRecive(&str,sizeof(str));
+			buffer = (char*)bn.sendAndRecive(str, sizeof(str), sizeof(str));
+			cout<<"Here is the message: "<<buffer<<" "<<sizeof(str)<<endl;
 			cout<<"sec"<<endl;
-			buffer = (char*)bn.sendAndRecive(&str,sizeof(str));
+			buffer = (char*)bn.sendAndRecive(&str, sizeof(str), sizeof(str));
+			cout<<"Here is the message: "<<buffer<<" "<<sizeof(str)<<endl;
 			cout<<"done"<<endl;
 		}
 
@@ -42,21 +50,23 @@ int main(const int argc, char * argv[]){
 	}else if(argc == 2){
 		BmrNet bn = BmrNet(atoi(argv[1]));
 		bn.listenNow();
-		ftime(&start);
+		ftime(&startt);
 		for (int i = 0; i < rounds; ++i) {
 			cout<<"first"<<endl;
-			buffer = (char*)bn.reciveAndSend(&str,sizeof(str));
+			buffer = (char*)bn.reciveAndSend(str, sizeof(str), sizeof(str));
+			cout<<"Here is the message: "<<buffer<<" "<<sizeof(str)<<endl;
 			cout<<"sec"<<endl;
 			buffer = (char*)bn.reciveAndSend(&doNoting,sizeof(str),sizeof(str));
+			cout<<"Here is the message: "<<buffer<<" "<<sizeof(str)<<endl;
 			cout<<"done"<<endl;
 		}
 
 	}
 
-ftime(&end);
-cout<< "total time:"<<((end.time - start.time)*1000.0 +(end.millitm - start.millitm))<<" millis"<<endl ;
-cout<< "avrg time:"<<((end.time - start.time)*1000.0 + (end.millitm - start.millitm))/rounds<<" millis"<<endl ;
-
+ftime(&endt);
+cout<< "total time:"<<((endt.time - startt.time)*1000.0 +(endt.millitm - startt.millitm))<<" millis"<<endl ;
+cout<< "avrg time:"<<((endt.time - startt.time)*1000.0 + (endt.millitm - startt.millitm))/rounds<<" millis"<<endl ;
+system("PAUSE");
 }
 
 

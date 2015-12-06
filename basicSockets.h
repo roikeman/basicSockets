@@ -10,6 +10,9 @@ using namespace std;
 #ifndef BMRNET_H_
 #define BMRNET_H_
 
+#ifdef _WIN32
+ #include<winsock2.h>
+#endif
 
 class BmrNet {
 private:
@@ -17,6 +20,12 @@ private:
 	unsigned int port;
 	bool is_JustServer;
 	int socketFd;
+	#ifdef _WIN32
+	    PCSTR Cport;
+		WSADATA wsa;
+		DWORD dwRetval;
+	#endif
+
 
 public:
 	/**
@@ -35,14 +44,14 @@ public:
 	 * got data and send it to the other side, wait for response and return it.
 	 * return pointer for the data that recived.
 	 */
-	void* sendAndRecive(const void* data, int size);
+	void* sendAndRecive(const void* data, int get_size, int send_size);
 
 	/**
 	 * got data and send it just after receiving someting from the other side
 	 * and return what it received.
 	 * return pointer for the data that recived.
 	 */
-	void* reciveAndSend(const void* data, int size);
+	void* reciveAndSend(const void* data, int get_size, int send_size);
 
 	/**
 	 * got function fun(void*, int) and after receiving someting from the other side it will call fun(data, get_size)

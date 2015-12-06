@@ -4,27 +4,60 @@
  *  Created on: Aug 3, 2015
  *      Author: froike
  */
-
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
 #include "basicSockets.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <iostream>
-#include <netdb.h>
+
+#define bufferSize 256
+
+#ifdef __linux__
+	#include <unistd.h>
+	#include <sys/socket.h>
+	#include <netinet/in.h>
+	#include <netdb.h>
+	#include <arpa/inet.h>
+	#define Sockwrite(sock, data, size) write(sock, data, size) 
+	#define Sockread(sock, buff, bufferSize) read(sock, buff, bufferSize)
+	#define socklen_t unsigned int
+#elif _WIN32
+	//#pragma comment (lib, "ws2_32.lib") //Winsock Library
+	#pragma comment (lib, "Ws2_32.lib")
+	//#pragma comment (lib, "Mswsock.lib")
+	//#pragma comment (lib, "AdvApi32.lib")
+	#include<winsock.h>
+	//#include <ws2tcpip.h>
+	#define socklen_t int
+	#define close closesocket
+	#define Sockwrite(sock, data, size) send(sock, (char*)data, size, 0)
+	#define Sockread(sock, buff, bufferSize) recv(sock, (char*)buff, bufferSize, 0)
+	
+#endif
+
+
+
 
 
 using namespace std;
 
 BmrNet::BmrNet(char* host, int portno) {
 	this->port = portno;
+#ifdef _Win32
+	this->Cport = (PCSTR)portno;
+#endif
 	this->host = host;
 	this->is_JustServer = false;
 	this->socketFd = NULL;
+	#ifdef _WIN32
+		if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+		{
+			printf("Failed. Error Code : %d\n", WSAGetLastError());
+		}else printf("WSP Initialised.\n");
+	#endif
+
 }
 
 BmrNet::BmrNet(int portno) {
@@ -32,11 +65,21 @@ BmrNet::BmrNet(int portno) {
 	this->host = "";
 	this->is_JustServer = true;
 	this->socketFd = NULL;
+#ifdef _WIN32
+	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+	{
+		printf("Failed. Error Code : %d\n", WSAGetLastError());
+	}
+	else printf("WSP Initialised.\n");
+#endif
 }
 
 BmrNet::~BmrNet() {
 	close(socketFd);
-	printf("Closeing!\n");
+	#ifdef _WIN32
+		WSACleanup();
+	#endif
+	printf("Closeing connection\n");
 }
 
 bool BmrNet::listenNow(){
@@ -51,7 +94,7 @@ bool BmrNet::listenNow(){
 		cout<<"ERROR opening socket"<<endl;
 		return false;
 	}
-	bzero((char *) &serv_addr, sizeof(serv_addr));
+	memset(&serv_addr, 0,sizeof(serv_addr));
 
 	serv_addr.sin_family = AF_INET;
 	serv_addr.sin_addr.s_addr = INADDR_ANY;
@@ -64,8 +107,7 @@ bool BmrNet::listenNow(){
 	listen(serverSockFd,5);
 	clilen = sizeof(cli_addr);
 	printf("Start listening!");
-	this->socketFd = accept(serverSockFd,
-			(struct sockaddr *) &cli_addr,
+	this->socketFd = accept(serverSockFd, (struct sockaddr *) &cli_addr,
 			&clilen);
 	if (this->socketFd < 0){
 		cout<<"ERROR on accept"<<endl;
@@ -78,7 +120,7 @@ bool BmrNet::listenNow(){
 	return true;
 }
 
-#define bufferSize 256
+
 bool BmrNet::connectNow(){
 	struct sockaddr_in serv_addr;
 	struct hostent *server;
@@ -89,28 +131,33 @@ bool BmrNet::connectNow(){
 		return false;
 	}
 
-	fprintf(stderr,"usage %s hostname port\n", host);
-	socketFd = socket(AF_INET, SOCK_STREAM, 0);
+	//fprintf(stderr,"usage %s hostname port\n", host);
+	socketFd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
 	if (socketFd < 0){
 		cout<<("ERROR opening socket")<<endl;
 		return false;
 	}
 
-	server = gethostbyname(host);
-	if (server == NULL) {
+	
+
+	/*server = gethostbyname(host);
+	if (server == NULL) {	
 		fprintf(stderr,"ERROR, no such host\n");
 		return false;
-	}
+	}*/
 
-	bzero((char *) &serv_addr, sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET;
-	bcopy((char *)server->h_addr,
-			(char *)&serv_addr.sin_addr.s_addr,
-			server->h_length);
-	serv_addr.sin_port = htons(port);
+	memset(&serv_addr, 0, sizeof(serv_addr));
+	serv_addr.sin_family		= AF_INET;
+	serv_addr.sin_addr.s_addr	= inet_addr(host);  //host);
+	serv_addr.sin_port			= htons(port);  // port);
+	//memcpy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
 	if (connect(socketFd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0){
-		cout<<"ERROR connecting"<<endl;
+		#ifdef _WIN32
+			cout << "ERROR connect() - " << WSAGetLastError()<<"!!!\n"<<endl;
+		#else
+			cout << "ERROR connect()"<<endl;
+		#endif
 		return false;
 	}
 
@@ -120,11 +167,13 @@ bool BmrNet::connectNow(){
 	return true;
 
 }
-void* BmrNet::sendAndRecive(const void* data, int size){
 
-	char * buffer = new char[256];
-	sendMsg(data,size);
-	reciveMsg(buffer,256);
+
+void* BmrNet::sendAndRecive(const void* data, int get_size, int send_size){
+
+	char * buffer = new char[get_size];
+	sendMsg(data, send_size);
+	reciveMsg(buffer, get_size);
 	return buffer;
 }
 
@@ -135,17 +184,17 @@ void* BmrNet::reciveAndSend(void* (*fun)(void*,int), int get_size, int send_size
 	return buffer;
 }
 
-void* BmrNet::reciveAndSend(const void* data, int size){
+void* BmrNet::reciveAndSend(const void* data, int get_size, int send_size){
 
-	char * buffer = new char[size];
-	reciveMsg(buffer,size);
-	sendMsg(data,size);
+	char * buffer = new char[get_size];
+	reciveMsg(buffer, get_size);
+	sendMsg(data, send_size);
 	return buffer;
 }
 
 bool BmrNet::sendMsg(const void* data, int size){
 	int n;
-	n = write(this->socketFd, data, size);
+	n = Sockwrite(this->socketFd, data, size);
 	if (n < 0){
 		cout<<"ERROR writing to socket"<<endl;
 		return false;
@@ -153,15 +202,15 @@ bool BmrNet::sendMsg(const void* data, int size){
 	return true;
 }
 
-bool BmrNet::reciveMsg(void* buff, int buffSize){
+bool BmrNet::reciveMsg(void* buff, int size){
 	int n;
-	bzero(buff,(unsigned long)buffSize);
-	n = read(this->socketFd,buff,bufferSize-1);
+	memset(buff, 0,(unsigned long)size);
+	n = Sockread(this->socketFd, buff, size);
 	if (n < 0){
 		cout<<"ERROR reading from socket"<<endl;
 		return false;
 	}
-	printf("Here is the message: %s\n",buff);
+	printf("Here is the message: %s, %d\n",buff,size);
 	return true;
 }
 
